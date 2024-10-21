@@ -1,159 +1,3 @@
-provider "aws" {
-  region = "us-east-1"
-}
-
-variable "projeto" {
-  description = "Nome do projeto"
-  type        = string
-  default     = "VExpenses"
-}
-
-variable "candidato" {
-  description = "Nome do candidato"
-  type        = string
-  default     = "SeuNome"
-}
-
-resource "tls_private_key" "ec2_key" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-resource "aws_key_pair" "ec2_key_pair" {
-  key_name   = "${var.projeto}-${var.candidato}-key"
-  public_key = tls_private_key.ec2_key.public_key_openssh
-}
-
-resource "aws_vpc" "main_vpc" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-vpc"
-  }
-}
-
-resource "aws_subnet" "main_subnet" {
-  vpc_id            = aws_vpc.main_vpc.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1a"  # Corrigido aqui
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-subnet"
-  }
-}
-
-resource "aws_internet_gateway" "main_igw" {
-  vpc_id = aws_vpc.main_vpc.id
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-igw"
-  }
-}
-
-resource "aws_route_table" "main_route_table" {
-  vpc_id = aws_vpc.main_vpc.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main_igw.id
-  }
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-route_table"
-  }
-}
-
-resource "aws_route_table_association" "main_association" {
-  subnet_id      = aws_subnet.main_subnet.id
-  route_table_id = aws_route_table.main_route_table.id
-}
-
-resource "aws_security_group" "main_sg" {
-  name        = "${var.projeto}-${var.candidato}-sg"
-  description = "Permitir SSH de um IP específico e todo o tráfego de saída"
-  vpc_id      = aws_vpc.main_vpc.id
-
-  # Regras de entrada
-  ingress {
-    description      = "Allow SSH from a specific IP"
-    from_port        = 22
-    to_port          = 22
-    protocol         = "tcp"
-    cidr_blocks      = ["177.53.133.172/32"]  # Substituído pelo seu IP
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  # Regras de saída
-  egress {
-    description      = "Allow all outbound traffic"
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-sg"
-  }
-}
-
-data "aws_ami" "debian12" {
-  most_recent = true
-
-  filter {
-    name   = "name"
-    values = ["debian-12-amd64-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  owners = ["679593333241"]
-}
-
-resource "aws_instance" "debian_ec2" {
-  ami             = data.aws_ami.debian12.id
-  instance_type   = "t2.micro"
-  subnet_id       = aws_subnet.main_subnet.id
-  key_name        = aws_key_pair.ec2_key_pair.key_name
-  security_groups = [aws_security_group.main_sg.name]
-
-  associate_public_ip_address = true
-
-  root_block_device {
-    volume_size           = 20
-    volume_type           = "gp2"
-    delete_on_termination = true
-  }
-
-  user_data = <<-EOF
-              #!/bin/bash
-              apt-get update -y
-              apt-get upgrade -y
-              apt-get install nginx -y
-              systemctl start nginx
-              EOF
-
-  tags = {
-    Name = "${var.projeto}-${var.candidato}-ec2"
-  }
-}
-
-output "private_key" {
-  description = "Chave privada para acessar a instância EC2"
-  value       = tls_private_key.ec2_key.private_key_pem
-  sensitive   = true
-}
-
-output "ec2_public_ip" {
-  description = "Endereço IP público da instância EC2"
-  value       = aws_instance.debian_ec2.public_ip
-}
 
 1. Descrição Técnica do Código Original (Tarefa 1)
 O código main.tf define a criação de uma infraestrutura na AWS usando Terraform. Ele abrange os seguintes recursos:
@@ -202,3 +46,49 @@ A segurança foi aprimorada ao restringir o acesso SSH à instância EC2 a um IP
 Automação da Instalação do Nginx:
 
 Um script foi incluído no user_data da instância EC2 para instalar e iniciar o Nginx automaticamente. Isso garante que, após a criação da instância, o Nginx estará em execução e pronto para servir páginas web.
+
+O código do script user_data é:
+#!/bin/bash
+apt-get update -y
+apt-get upgrade -y
+apt-get install nginx -y
+systemctl start nginx
+
+3. Instruções de Uso
+Pré-requisitos:
+AWS CLI configurado corretamente com as credenciais da AWS.
+Terraform instalado no seu sistema.
+Passos para Aplicar a Configuração:
+Inicializar o Terraform:
+
+Navegue até a pasta onde o arquivo main.tf está localizado e execute:
+
+terraform init
+
+Verificar o Plano:
+
+Para ver o que o Terraform irá criar, execute o comando:
+
+terraform plan
+
+Aplicar a Configuração:
+
+Se o plano estiver correto, aplique a configuração com o comando:
+
+terraform apply
+
+Confirme digitando yes quando solicitado.
+Acesso à Instância EC2:
+
+O IP público da instância EC2 será exibido após a aplicação da configuração. Utilize esse IP para acessar o servidor via SSH ou abrir a página do Nginx no navegador.
+
+Para acessar via SSH:
+
+ssh -i /caminho/para/sua-chave.pem ec2-user@ip-da-instancia
+
+4. Resultados Esperados
+Uma instância EC2 rodando Debian com o Nginx instalado e funcionando.
+Segurança aprimorada com restrição de acesso SSH a um IP específico.
+Outputs no terminal do Terraform mostrando a chave privada e o IP público da instância.
+
+
