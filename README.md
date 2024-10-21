@@ -39,6 +39,7 @@ Outputs:
 
 Exibe a chave privada gerada para o acesso SSH.
 Exibe o IP público da instância EC2.
+
 2. Melhorias de Segurança e Automação (Tarefa 2)
 Melhorias de Segurança:
 
